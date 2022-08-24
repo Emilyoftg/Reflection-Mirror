@@ -5,7 +5,7 @@ from telegram.error import RetryAfter
 from pyrogram.errors import FloodWait
 
 from bot import AUTO_DELETE_MESSAGE_DURATION, LOGGER, status_reply_dict, status_reply_dict_lock, \
-                Interval, DOWNLOAD_STATUS_UPDATE_INTERVAL, RSS_CHAT_ID, bot, rss_session, AUTO_DELETE_UPLOAD_MESSAGE_DURATION
+                Interval, DOWNLOAD_STATUS_UPDATE_INTERVAL, RSS_CHAT_ID, bot, rss_session, AUTO_DELETE_UPLOAD_MESSAGE_DURATION, LOG_CHANNEL, LOG_CHANNEL_LOGGER
 from bot.helper.ext_utils.bot_utils import get_readable_message, setInterval
 
 
@@ -36,6 +36,22 @@ def sendMarkup(text: str, bot, message: Message, reply_markup: InlineKeyboardMar
         LOGGER.error(str(e))
         return
 
+def sendLog(text: str, bot, message: Message, reply_markup: InlineKeyboardMarkup):
+    try:
+        return bot.send_message(f"{LOG_CHANNEL}",
+                             reply_to_message_id=message.message_id,
+                             text=text, disable_web_page_preview=True, reply_markup=reply_markup, allow_sending_without_reply=True, parse_mode='HTMl')
+    except Exception as e:
+        LOGGER.error(str(e))
+
+def sendtextlog(text: str, bot, message: Message):
+    try:
+        return bot.send_message(f"{LOG_CHANNEL_LOGGER}",
+                             reply_to_message_id=message.message_id,
+                             text=text, disable_web_page_preview=True, allow_sending_without_reply=True, parse_mode='HTMl')
+    except Exception as e:
+        LOGGER.error(str(e))
+        
 def editMessage(text: str, message: Message, reply_markup=None):
     try:
         bot.editMessageText(text=text, message_id=message.message_id,
@@ -86,39 +102,25 @@ async def sendRss_pyro(text: str):
         LOGGER.error(str(e))
         return
 
+def sendPrivate(text: str, bot, message: Message, reply_markup: InlineKeyboardMarkup):
+    bot_d = bot.get_me()
+    b_uname = bot_d.username
+    
+    try:
+        return bot.send_message(message.from_user.id,
+                             reply_to_message_id=message.message_id,
+                             text=text, disable_web_page_preview=True, reply_markup=reply_markup, allow_sending_without_reply=True, parse_mode='HTMl')
+    except Exception as e:
+        LOGGER.error(str(e))
+
 def sendPhoto(text: str, bot, message, photo, reply_markup=None):
     try:
-        return bot.send_photo(
-            chat_id=message.chat_id,
-            photo=photo,
-            reply_to_message_id=message.message_id,
-            caption=text,
-            reply_markup=reply_markup,
-            parse_mode='html')
+        return bot.send_photo(chat_id=message.chat_id, photo=photo, reply_to_message_id=message.message_id,
+            caption=text, reply_markup=reply_markup, parse_mode='html')
     except RetryAfter as r:
         LOGGER.warning(str(r))
         sleep(r.retry_after * 1.5)
         return sendPhoto(text, bot, message, photo, reply_markup)
-    except Exception as e:
-        LOGGER.error(str(e))
-
-
-def sendPhotoMsg(
-        caption: str,
-        bot,
-        message: Message,
-        photo,
-        reply_markup=None):
-    try:
-        return bot.send_photo(message.chat_id,
-                              reply_to_message_id=message.message_id,
-                              caption=caption, reply_markup=reply_markup,
-                              allow_sending_without_reply=True,
-                              photo=photo, parse_mode='HTMl')
-    except RetryAfter as r:
-        LOGGER.warning(str(r))
-        sleep(r.retry_after * 1.5)
-        return sendPhotoMsg(caption, bot, message, photo, reply_markup)
     except Exception as e:
         LOGGER.error(str(e))
         return
@@ -158,6 +160,16 @@ def auto_delete_upload_message(bot, cmd_message: Message, bot_message: Message):
         except AttributeError:
             pass
 
+def auto_delete(bot, cmd_message: Message, bot_message: Message):
+    if AUTO_DELETE_MESSAGE_DURATION != -1:
+        sleep(AUTO_DELETE_MESSAGE_DURATION)
+        try:
+            # Skip if None is passed meaning we don't want to delete bot xor cmd message
+            deleteMessage(bot, cmd_message)
+            deleteMessage(bot, bot_message)
+        except AttributeError:
+            pass
+        
 def delete_all_messages():
     with status_reply_dict_lock:
         for data in list(status_reply_dict.values()):
@@ -173,6 +185,7 @@ def update_all_messages(force=False):
             return
         for chat_id in status_reply_dict:
             status_reply_dict[chat_id][1] = time()
+
     msg, buttons = get_readable_message()
     if msg is None:
         return

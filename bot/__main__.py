@@ -3,25 +3,24 @@ from os import path as ospath, remove as osremove, execl as osexecl
 from subprocess import run as srun, check_output
 from psutil import disk_usage, cpu_percent, swap_memory, cpu_count, virtual_memory, net_io_counters, boot_time
 from time import time
-from random import choice
 from sys import executable
 from telegram import ParseMode, InlineKeyboardMarkup
 from telegram.ext import CommandHandler
 import requests
 import pytz
 from bot import bot, dispatcher, updater, botStartTime, TIMEZONE, IGNORE_PENDING_REQUESTS, LOGGER, Interval, INCOMPLETE_TASK_NOTIFIER, \
-                    DB_URI, alive, app, main_loop, HEROKU_API_KEY, HEROKU_APP_NAME, SET_BOT_COMMANDS, AUTHORIZED_CHATS, USER_SESSION_STRING, app_session
+                    DB_URI, app, main_loop, HEROKU_API_KEY, HEROKU_APP_NAME, SET_BOT_COMMANDS, AUTHORIZED_CHATS
 from .helper.ext_utils.fs_utils import start_cleanup, clean_all, exit_clean_up
 from .helper.ext_utils.telegraph_helper import telegraph
 from .helper.ext_utils.bot_utils import get_readable_file_size, get_readable_time
 from .helper.ext_utils.db_handler import DbManger
 from .helper.telegram_helper.bot_commands import BotCommands
-from .helper.telegram_helper.message_utils import sendMessage, sendMarkup, editMessage, sendLogFile, sendPhotoMsg
+from .helper.telegram_helper.message_utils import sendMessage, sendMarkup, editMessage, sendLogFile
 from .helper.telegram_helper.filters import CustomFilters
 from .helper.telegram_helper.button_build import ButtonMaker
 from bot.modules.wayback import getRandomUserAgent
-from .modules import authorize, list, cancel_mirror, mirror_status, mirror, clone, watch, shell, eval, \
-                    delete, count, leech_settings, search, rss, wayback, speedtest, usage, anilist, bt_select, mediainfo, hash, sleep
+from .modules import authorize, list, cancel_mirror, mirror_status, mirror_leech, clone, ytdlp, shell, eval, \
+                    delete, count, leech_settings, search, rss, wayback, speedtest, usage, anilist, bt_select, mediainfo, hash, addons
 from datetime import datetime
 
 try: import heroku3
@@ -96,33 +95,34 @@ def getHerokuDetails(h_api_key, h_app_name):
 
 
 
-IMAGE_X = "http://telegra.ph/REFLECTION-07-18"
+IMAGE_X = "https://telegra.ph/file/9c2c7250397f4ed2eed20.jpg"
 
 now=datetime.now(pytz.timezone(f'{TIMEZONE}'))
 
 def progress_bar(percentage):
-    p_used = '⬢'
-    p_total = '⬡'
+    p_used = "⬢"
+    p_total = "⬡"
     if isinstance(percentage, str):
-        return 'NaN'
+        return "NaN"
     try:
-        percentage=int(percentage)
-    except:
+        percentage = int(percentage)
+    except BaseException:
         percentage = 0
-    return ''.join(
-        p_used if i <= percentage // 10 else p_total for i in range(1, 11)
-    )
+    return "".join(p_used if i <= percentage // 10 else p_total for i in range(1, 11))
 
 
 def stats(update, context):
-    if ospath.exists('.git'):
-        last_commit = check_output(["git log -1 --date=short --pretty=format:'%cd \n├ 🛠<b>From</b> %cr'"], shell=True).decode()
+    if ospath.exists(".git"):
+        last_commit = check_output(
+            ["git log -1 --date=short --pretty=format:'%cd \n├ 🛠<b>From</b> %cr'"],
+            shell=True,
+        ).decode()
     else:
-        last_commit = 'No UPSTREAM_REPO'
+        last_commit = "No UPSTREAM_REPO"
     currentTime = get_readable_time(time() - botStartTime)
-    current = now.strftime('%m/%d %I:%M:%S %p')
+    current = now.strftime("%m/%d %I:%M:%S %p")
     osUptime = get_readable_time(time() - boot_time())
-    total, used, free, disk= disk_usage('/')
+    total, used, free, disk = disk_usage("/")
     total = get_readable_file_size(total)
     used = get_readable_file_size(used)
     free = get_readable_file_size(free)
@@ -139,30 +139,33 @@ def stats(update, context):
     mem_t = get_readable_file_size(memory.total)
     mem_a = get_readable_file_size(memory.available)
     mem_u = get_readable_file_size(memory.used)
-    stats = f'<b>╭─《🌐 BOT STATISTICS 🌐》</b>\n' \
-            f'<b>│</b>\n' \
-            f'<b>├ 🛠 𝙲𝙾𝙼𝙼𝙸𝚃 𝙳𝙰𝚃𝙴:</b> {last_commit}\n'\
-            f'<b>├ 🟢 𝙾𝙽𝙻𝙸𝙽𝙴 𝚃𝙸𝙼𝙴:</b> {currentTime}\n'\
-            f'<b>├ 🟢 Sᴛᴀʀᴛᴇᴅ Aᴛ:</b> {current}\n'\
-            f'<b>├ ☠️ 𝙾𝚂 𝚄𝙿𝚃𝙸𝙼𝙴:</b> {osUptime}\n'\
-            f'<b>├ 💾 𝙳𝙸𝚂𝙺 𝚂𝙿𝙰𝙲𝙴:</b> {total}\n'\
-            f'<b>├ 📀 𝙳𝙸𝚂𝙺 𝚂𝙿𝙰𝙲𝙴 𝚄𝚂𝙴𝙳:</b> {used}\n'\
-            f'<b>├ 💿 𝙳𝙸𝚂𝙺 𝚂𝙿𝙰𝙲𝙴 𝙵𝚁𝙴𝙴:</b> {free}\n'\
-            f'<b>├ 🔺 𝚄𝙿𝙻𝙾𝙰𝙳 𝙳𝙰𝚃𝙰:</b> {sent}\n'\
-            f'<b>├ 🔻 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙳𝙰𝚃𝙰:</b> {recv}\n'\
-            f'<b>├ 🖥️ 𝙲𝙿𝚄 𝚄𝚂𝙰𝙶𝙴:</b> {progress_bar(cpuUsage)} {cpuUsage}%\n' \
-            f'<b>├ 🎮 𝚁𝙰𝙼:</b> {progress_bar(mem_p)} {mem_p}%\n' \
-            f'<b>├ 👸 𝙳𝙸𝚂𝙺 𝚄𝚂𝙴𝙳:</b> {progress_bar(disk)} {disk}%\n\n' \
-            f'<b>├ 💽 𝙿𝙷𝚈𝚂𝙸𝙲𝙰𝙻 𝙲𝙾𝚁𝙴𝚂:</b> {p_core}\n'\
-            f'<b>├ 🍥 𝚃𝙾𝚃𝙰𝙻 𝙲𝙾𝚁𝙴𝚂:</b> {t_core}\n'\
-            f'<b>├ ✳ 𝚂𝚆𝙰𝙿:</b> {swap_t}\n'\
-            f'<b>├ 👸 𝚂𝚆𝙰𝙿 𝚄𝚂𝙴𝙳:</b> {swap_p}%\n'\
-            f'<b>├ ☁ 𝚃𝙾𝚃𝙰𝙻 𝙾𝙵 𝙼𝙴𝙼𝙾𝚁𝚈:</b> {mem_t}\n'\
-            f'<b>├ 💃 𝙵𝚁𝙴𝙴 𝙾𝙵 𝙼𝙴𝙼𝙾𝚁𝚈:</b> {mem_a}\n'\
-            f'<b>╰ 👰 𝚄𝚂𝙰𝙶𝙴 𝙾𝙵 𝙼𝙴𝙼𝙾𝚁𝚈:</b> {mem_u}\n'
+    stats = (
+        f"<b>╭─《🌐 BOT STATISTICS 🌐》</b>\n"
+        f"<b>│</b>\n"
+        f"<b>├ 🛠 𝙲𝙾𝙼𝙼𝙸𝚃 𝙳𝙰𝚃𝙴:</b> {last_commit}\n"
+        f"<b>├ 🟢 𝙾𝙽𝙻𝙸𝙽𝙴 𝚃𝙸𝙼𝙴:</b> {currentTime}\n"
+        f"<b>├ 🟢 Sᴛᴀʀᴛᴇᴅ Aᴛ:</b> {current}\n"
+        f"<b>├ ☠️ 𝙾𝚂 𝚄𝙿𝚃𝙸𝙼𝙴:</b> {osUptime}\n"
+        f"<b>├ 💾 𝙳𝙸𝚂𝙺 𝚂𝙿𝙰𝙲𝙴:</b> {total}\n"
+        f"<b>├ 📀 𝙳𝙸𝚂𝙺 𝚂𝙿𝙰𝙲𝙴 𝚄𝚂𝙴𝙳:</b> {used}\n"
+        f"<b>├ 💿 𝙳𝙸𝚂𝙺 𝚂𝙿𝙰𝙲𝙴 𝙵𝚁𝙴𝙴:</b> {free}\n"
+        f"<b>├ 🔺 𝚄𝙿𝙻𝙾𝙰𝙳 𝙳𝙰𝚃𝙰:</b> {sent}\n"
+        f"<b>├ 🔻 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙳𝙰𝚃𝙰:</b> {recv}\n"
+        f"<b>├ 🖥️ 𝙲𝙿𝚄 𝚄𝚂𝙰𝙶𝙴:</b> {progress_bar(cpuUsage)} {cpuUsage}%\n"
+        f"<b>├ 🎮 𝚁𝙰𝙼:</b> {progress_bar(mem_p)} {mem_p}%\n"
+        f"<b>├ 👸 𝙳𝙸𝚂𝙺 𝚄𝚂𝙴𝙳:</b> {progress_bar(disk)} {disk}%\n\n"
+        f"<b>├ 💽 𝙿𝙷𝚈𝚂𝙸𝙲𝙰𝙻 𝙲𝙾𝚁𝙴𝚂:</b> {p_core}\n"
+        f"<b>├ 🍥 𝚃𝙾𝚃𝙰𝙻 𝙲𝙾𝚁𝙴𝚂:</b> {t_core}\n"
+        f"<b>├ ✳ 𝚂𝚆𝙰𝙿:</b> {swap_t}\n"
+        f"<b>├ 👸 𝚂𝚆𝙰𝙿 𝚄𝚂𝙴𝙳:</b> {swap_p}%\n"
+        f"<b>├ ☁ 𝚃𝙾𝚃𝙰𝙻 𝙾𝙵 𝙼𝙴𝙼𝙾𝚁𝚈:</b> {mem_t}\n"
+        f"<b>├ 💃 𝙵𝚁𝙴𝙴 𝙾𝙵 𝙼𝙴𝙼𝙾𝚁𝚈:</b> {mem_a}\n"
+        f"<b>╰ 👰 𝚄𝚂𝙰𝙶𝙴 𝙾𝙵 𝙼𝙴𝙼𝙾𝚁𝚈:</b> {mem_u}\n"
+    )
     heroku = getHerokuDetails(HEROKU_API_KEY, HEROKU_APP_NAME)
-    if heroku: stats += heroku 
-           
+    if heroku:
+        stats += heroku
+
     update.effective_message.reply_photo(IMAGE_X, stats, parse_mode=ParseMode.HTML)
 
 
@@ -173,29 +176,31 @@ def start(update, context):
     buttons.buildbutton("🇮🇳 Support Group", "https://t.me/mirrorsociety")
     reply_markup = InlineKeyboardMarkup(buttons.build_menu(2))
     if CustomFilters.authorized_user(update) or CustomFilters.authorized_chat(update):
-        start_string = f'''
+        start_string = f"""
 This bot can mirror all your links to Google Drive And Leech Files To Telegram!
 Type /{BotCommands.HelpCommand} to get a list of available commands
-'''
+"""
         sendMarkup(start_string, context.bot, update.message, reply_markup)
     else:
-        sendMarkup('Not Authorized user, deploy your own mirror-leech bot', context.bot, update.message, reply_markup)
-
+        sendMarkup(
+            "Not Authorized user, deploy your own mirror-leech bot",
+            context.bot,
+            update.message,
+            reply_markup,
+        )
 
 def restart(update, context):
-    restart_message = sendMessage("Restarting, Please wait!..👻👻", context.bot, update.message)
+    restart_message = sendMessage("Restarting...", context.bot, update.message)
     if Interval:
         Interval[0].cancel()
         Interval.clear()
-    alive.kill()
     clean_all()
-    srun(["pkill", "-9", "-f", "gunicorn|extra-api|last-api|megasdkrest|new-api"])
+    srun(["pkill", "-f", "gunicorn|aria2c|qbittorrent-nox"])
     srun(["python3", "update.py"])
     with open(".restartmsg", "w") as f:
         f.truncate(0)
         f.write(f"{restart_message.chat.id}\n{restart_message.message_id}\n")
     osexecl(executable, executable, "-m", "bot")
-
 
 def ping(update, context):
     start_time = int(round(time() * 1000))
@@ -209,7 +214,7 @@ def log(update, context):
 
 
 help_string = '''
-<b><a href='https://t.me/dipeshmirror'>ReflectionMirror</a></b> - The Ultimate Telegram MIrror-Leech Bot to Upload Your File & Link in Google Drive & Telegram
+<b><a href='https://t.me/dipeshmirror'>ReflecrionMirror</a></b> - The Ultimate Telegram MIrror-Leech Bot to Upload Your File & Link in Google Drive & Telegram
 Choose a help category:
 '''
 
@@ -224,7 +229,7 @@ help_string_telegraph_user = f'''
 <br><br>
 • <b>/{BotCommands.UnzipMirrorCommand}</b> [download_url][magnet_link]: Start mirroring and upload the file/folder extracted from any archive extension
 <br><br>
-• <b>/{BotCommands.QbMirrorCommand}</b> [magnet_link][torrent_file][torrent_file_url]: Start Mirroring using qBittorrent, Use <b>/{BotCommands.QbMirrorCommand} s</b> to select files before downloading and use <b>/{BotCommands.QbMirrorCommand} d</b> to seed specific torrent
+• <b>/{BotCommands.QbMirrorCommand}</b> [magnet_link][torrent_file][torrent_file_url]: Start Mirroring using qBittorrent, Use <b>/{BotCommands.QbMirrorCommand} s</b> to select files before downloading
 <br><br>
 • <b>/{BotCommands.QbZipMirrorCommand}</b> [magnet_link][torrent_file][torrent_file_url]: Start mirroring using qBittorrent and upload the file/folder compressed with zip extension
 <br><br>
@@ -235,8 +240,6 @@ help_string_telegraph_user = f'''
 • <b>/{BotCommands.ZipLeechCommand}</b> [download_url][magnet_link]: Start leeching to Telegram and upload the file/folder compressed with zip extension
 <br><br>
 • <b>/{BotCommands.UnzipLeechCommand}</b> [download_url][magnet_link][torent_file]: Start leeching to Telegram and upload the file/folder extracted from any archive extension
-<br><br>
-• <b>/{BotCommands.BtSelectCommand}</b>: Reply to an active /cmd which was used to start the bt-download or add gid along with cmd. This command mainly for selection incase you decided to select files from already added torrent. But you can always use /cmd with arg `s` to select files before download start
 <br><br>
 • <b>/{BotCommands.QbLeechCommand}</b> [magnet_link][torrent_file][torrent_file_url]: Start leeching to Telegram using qBittorrent, Use <b>/{BotCommands.QbLeechCommand} s</b> to select files before leeching
 <br><br>
@@ -286,13 +289,13 @@ help_string_telegraph_user = f'''
 <br><br>
 • <b>/{BotCommands.StatsCommand}</b>: Show Stats of the machine the bot is hosted on
 <br><br>
-• <b>/{BotCommands.SpeedCommand}</b>: Speedtest of server
+• <b>/{BotCommands.SpeedCommand}</b>: Speedtest of Heroku server
 <br><br>
 • <b>/weebhelp</b>: Okatu helper
 '''
 
 help_user = telegraph.create_page(
-    title='😄 ReflectionMirror Help 😄',
+    title='😄 ReflecrionMirror Help 😄',
     content=help_string_telegraph_user)["path"]
 
 help_string_telegraph_admin = f'''
@@ -316,13 +319,13 @@ help_string_telegraph_admin = f'''
 '''
 
 help_admin = telegraph.create_page(
-    title='😄 ReflectionMirror Help',
+    title='😄 Reflection-Mirror Help',
     content=help_string_telegraph_admin)["path"]
 
 def bot_help(update, context):
     button = ButtonMaker()
-    button.buildbutton("👤 User", f"https://graph.org/{help_user}")
-    button.buildbutton("🛡️ Admin", f"https://graph.org/{help_admin}")
+    button.buildbutton("👤 User", f"https://telegra.ph/{help_user}")
+    button.buildbutton("🛡️ Admin", f"https://telegra.ph/{help_admin}")
     sendMarkup(help_string, context.bot, update.message, InlineKeyboardMarkup(button.build_menu(2)))
 
        
@@ -442,10 +445,5 @@ def main():
 
 app.start()
 main()
-
-if USER_SESSION_STRING:
-    app_session.run()
-else:
-    pass
 
 main_loop.run_forever()

@@ -17,6 +17,8 @@ from megasdkrestclient import MegaSdkRestClient, errors as mega_err
 
 main_loop = get_event_loop()
 
+PRE_DICT = {}
+
 faulthandler_enable()
 
 setdefaulttimeout(600)
@@ -84,8 +86,6 @@ try:
     TORRENT_TIMEOUT = int(TORRENT_TIMEOUT)
 except:
     TORRENT_TIMEOUT = None
-
-
 try:
     SERVER_PORT = getConfig('SERVER_PORT')
     if len(SERVER_PORT) == 0:
@@ -97,7 +97,6 @@ Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{SERVER_PORT}", shell=True)
 srun(["qbittorrent-nox", "-d", "--profile=."])
 if not ospath.exists('.netrc'):
     srun(["touch", ".netrc"])
-alive = Popen(["python3", "alive.py"])
 srun(["cp", ".netrc", "/root/.netrc"])
 srun(["chmod", "600", ".netrc"])
 srun(["chmod", "+x", "aria.sh"])
@@ -146,7 +145,7 @@ AUTHORIZED_CHATS = set()
 SUDO_USERS = set()
 AS_DOC_USERS = set()
 AS_MEDIA_USERS = set()
-EXTENSION_FILTER = set()
+EXTENSION_FILTER = set(['.aria2'])
 LEECH_LOG = set()	
 MIRROR_LOGS = set()
 LINK_LOGS = set()
@@ -214,28 +213,9 @@ except KeyError as e:
     AUTO_DELETE_UPLOAD_MESSAGE_DURATION = -1
     LOGGER.warning("AUTO_DELETE_UPLOAD_MESSAGE_DURATION var missing!")
     pass
-LOGGER.info("Generating BOT_SESSION_STRING")
+
+LOGGER.info("Generating SESSION_STRING")
 app = Client(name='pyrogram', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML, no_updates=True)
-
-try:
-    RSS_USER_SESSION_STRING = getConfig('RSS_USER_SESSION_STRING')
-    if len(RSS_USER_SESSION_STRING) == 0:
-        raise KeyError
-    rss_session = Client(name='rss_session', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH,
-                         session_string=RSS_USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
-except:
-    RSS_USER_SESSION_STRING = None
-    rss_session = None
-
-
-try:
-    USER_SESSION_STRING = getConfig('USER_SESSION_STRING')
-    if len(USER_SESSION_STRING) == 0:
-        raise KeyError
-    app_session = Client(name='app_session', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, session_string=USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
-except:
-    USER_SESSION_STRING = None
-    app_session = None
 
 def aria2c_init():
     try:
@@ -253,33 +233,21 @@ def aria2c_init():
 Thread(target=aria2c_init).start()
 
 try:
-    MEGA_KEY = getConfig('MEGA_API_KEY')
-    if len(MEGA_KEY) == 0:
+    MEGA_API_KEY = getConfig('MEGA_API_KEY')
+    if len(MEGA_API_KEY) == 0:
         raise KeyError
 except:
-    MEGA_KEY = None
-    LOGGER.info('MEGA_API_KEY not provided!')
-if MEGA_KEY is not None:
-    # Start megasdkrest binary
-    Popen(["megasdkrest", "--apikey", MEGA_KEY])
-    sleep(3)  # Wait for the mega server to start listening
-    mega_client = MegaSdkRestClient('http://localhost:6090')
-    try:
-        MEGA_USERNAME = getConfig('MEGA_EMAIL_ID')
-        MEGA_PASSWORD = getConfig('MEGA_PASSWORD')
-        if len(MEGA_USERNAME) > 0 and len(MEGA_PASSWORD) > 0:
-            try:
-                mega_client.login(MEGA_USERNAME, MEGA_PASSWORD)
-            except mega_err.MegaSdkRestClientException as e:
-                log_error(e.message['message'])
-                exit(0)
-        else:
-            log_info("Mega API KEY provided but credentials not provided. Starting mega in anonymous mode!")
-    except:
-        log_info("Mega API KEY provided but credentials not provided. Starting mega in anonymous mode!")
-else:
-    sleep(1.5)
-
+    log_warning('MEGA API KEY not provided!')
+    MEGA_API_KEY = None
+try:
+    MEGA_EMAIL_ID = getConfig('MEGA_EMAIL_ID')
+    MEGA_PASSWORD = getConfig('MEGA_PASSWORD')
+    if len(MEGA_EMAIL_ID) == 0 or len(MEGA_PASSWORD) == 0:
+        raise KeyError
+except:
+    log_warning('MEGA Credentials not provided!')
+    MEGA_EMAIL_ID = None
+    MEGA_PASSWORD = None
 try:
     BASE_URL = getConfig('BASE_URL_OF_BOT').rstrip("/")
     if len(BASE_URL) == 0:
@@ -293,26 +261,41 @@ try:
         raise KeyError
 except:
     DB_URI = None
-if USER_SESSION_STRING:
-    try:
-        with app_session:
-            user = app_session.get_me()
-            try:
-                if user.is_premium:
-                    MAX_LEECH_SIZE = 4194304000
-                    LOGGER.info("User is Premium Max Leech Size is 4 GB")
-                else:
-                    MAX_LEECH_SIZE = 2097152000
-                    LOGGER.info("User is not Premium Max Leech Size is 2 GB")
-            except Exception as e:
-             MAX_LEECH_SIZE = 2097152000
-             LOGGER.info(f"{e} Max Leech Size is 2 GB")
-    except Exception as e:
-        MAX_LEECH_SIZE = 2097152000
-        LOGGER.info(f"{e} Max Leech Size is 2 GB")
-else:
-    MAX_LEECH_SIZE = 2097152000
-    LOGGER.info(f"User Session String Was not provided Skipping Premium acc verification.")
+tgBotMaxFileSize = 2097151000
+try:
+    TG_SPLIT_SIZE = getConfig('TG_SPLIT_SIZE')
+    if len(TG_SPLIT_SIZE) == 0 or int(TG_SPLIT_SIZE) > tgBotMaxFileSize:
+        raise KeyError
+    TG_SPLIT_SIZE = int(TG_SPLIT_SIZE)
+except:
+    TG_SPLIT_SIZE = tgBotMaxFileSize
+try:
+    USER_SESSION_STRING = getConfig('USER_SESSION_STRING')
+    if len(USER_SESSION_STRING) == 0:
+        raise KeyError
+    premium_session = Client(name='premium_session', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, session_string=USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
+    if not premium_session:
+        LOGGER.error("Cannot initialized User Session. Please regenerate USER_SESSION_STRING")
+    else:
+        premium_session.start()
+        if (premium_session.get_me()).is_premium:
+            if not LEECH_LOG:
+                LOGGER.error("You must set LEECH_LOG for uploads. Eiting now.")
+                try: premium_session.send_message(OWNER_ID, "You must set LEECH_LOG for uploads, Exiting Now...")
+                except Exception as e: LOGGER.exception(e)
+                premium_session.stop()
+                app.stop()
+                exit(1)
+            TG_SPLIT_SIZE = 4194304000
+            MAX_LEECH_SIZE = 2097152000
+            LOGGER.info("Telegram Premium detected! Leech limit is 4GB now.")
+        elif (not DB_URI) or (not RSS_CHAT_ID):
+            premium_session.stop()
+            LOGGER.info(f"Not using rss. if you want to use fill RSS_CHAT_ID and DB_URI variables.")
+except:
+    USER_SESSION_STRING = None
+    premium_session = None
+LOGGER.info(f"TG_SPLIT_SIZE: {TG_SPLIT_SIZE}")
 try:
     STATUS_LIMIT = getConfig('STATUS_LIMIT')
     if len(STATUS_LIMIT) == 0:
@@ -395,19 +378,20 @@ try:
 except:
     ZIP_UNZIP_LIMIT = None
 try:
-    LEECH_LIMIT = getConfig('LEECH_LIMIT')
-    if len(LEECH_LIMIT) == 0:
-        raise KeyError
-    LEECH_LIMIT = float(LEECH_LIMIT)
-except:
-    LEECH_LIMIT = None
-try:
     RSS_CHAT_ID = getConfig('RSS_CHAT_ID')
     if len(RSS_CHAT_ID) == 0:
         raise KeyError
     RSS_CHAT_ID = int(RSS_CHAT_ID)
 except:
     RSS_CHAT_ID = None
+try:
+    RSS_USER_SESSION_STRING = getConfig('RSS_USER_SESSION_STRING')
+    if len(RSS_USER_SESSION_STRING) == 0:
+        raise KeyError
+    rss_session = Client(name='rss_session', api_id=int(TELEGRAM_API), api_hash=TELEGRAM_HASH, session_string=RSS_USER_SESSION_STRING, parse_mode=enums.ParseMode.HTML, no_updates=True)
+except:
+    USER_SESSION_STRING = None
+    rss_session = None
 try:
     RSS_DELAY = getConfig('RSS_DELAY')
     if len(RSS_DELAY) == 0:
@@ -445,31 +429,33 @@ try:
 except:
     INCOMPLETE_TASK_NOTIFIER = False
 try:
-    FSUB = getConfig('FSUB')
-    FSUB = FSUB.lower() == 'true'
-except BaseException:
-    FSUB = False
-    LOGGER.info("Force Subscribe is disabled")
-try:
-    CHANNEL_USERNAME = getConfig("CHANNEL_USERNAME")
-    if len(CHANNEL_USERNAME) == 0:
-        raise KeyError
-except KeyError:
-    log_info("CHANNEL_USERNAME not provided! Using default @dipeshmirror")
-    CHANNEL_USERNAME = "dipeshmirror"
-try:
-    FSUB_CHANNEL_ID = getConfig("FSUB_CHANNEL_ID")
-    if len(FSUB_CHANNEL_ID) == 0:
-        raise KeyError
-    FSUB_CHANNEL_ID = int(FSUB_CHANNEL_ID)
-except KeyError:
-    log_info("CHANNEL_ID not provided! Using default id of @Z_Mirror")
-    FSUB_CHANNEL_ID = -1001232292892
-try:
     STOP_DUPLICATE = getConfig('STOP_DUPLICATE')
     STOP_DUPLICATE = STOP_DUPLICATE.lower() == 'true'
 except:
     STOP_DUPLICATE = False
+try:
+    LOG_CHANNEL = int(getConfig('LOG_CHANNEL'))
+    if int(LOG_CHANNEL) == 0:
+        raise KeyError
+except:
+    LOGGER.info('LOG_CHANNEL not provided!')
+    LOG_CHANNEL = None
+    
+try:
+    LOG_CHANNEL_LOGGER = int(getConfig('LOG_CHANNEL_LOGGER'))
+    if int(LOG_CHANNEL_LOGGER) == 0:
+        raise KeyError
+except:
+    LOGGER.info('LOG_CHANNEL_LOGGER not provided!')
+    LOG_CHANNEL_LOGGER = None 
+    
+try:
+    LOG_LEECH = int(getConfig('LOG_LEECH'))
+    if int(LOG_LEECH) == 0:
+        raise KeyError
+except:
+    LOGGER.info('LOG_LEECH not provided!')
+    LOG_LEECH = None    
 try:
     VIEW_LINK = getConfig('VIEW_LINK')
     VIEW_LINK = VIEW_LINK.lower() == 'true'
@@ -479,20 +465,7 @@ try:
     SET_BOT_COMMANDS = getConfig('SET_BOT_COMMANDS')
     SET_BOT_COMMANDS = SET_BOT_COMMANDS.lower() == 'true'
 except:
-    SET_BOT_COMMANDS = False 
-try:
-    LOG_CHAT = getConfig('LOG_CHAT')
-    if len(LOG_CHAT) == 0:
-        raise KeyError
-    LOG_CHAT = int(LOG_CHAT)
-except:
-    LOG_CHAT = None
-try:
-    LOG_CHAT_URL = getConfig('LOG_CHAT_URL')
-    if len(LOG_CHAT_URL) == 0:
-        raise KeyError
-except:
-    LOG_CHAT_URL = None       
+    SET_BOT_COMMANDS = False        
 try:
     IS_TEAM_DRIVE = getConfig('IS_TEAM_DRIVE')
     IS_TEAM_DRIVE = IS_TEAM_DRIVE.lower() == 'true'
@@ -532,11 +505,6 @@ try:
 except:
     EQUAL_SPLITS = False
 try:
-    QB_SEED = getConfig('QB_SEED')
-    QB_SEED = QB_SEED.lower() == 'true'
-except:
-    QB_SEED = False
-try:
     CUSTOM_FILENAME = getConfig('CUSTOM_FILENAME')
     if len(CUSTOM_FILENAME) == 0:
         raise KeyError
@@ -552,6 +520,7 @@ try:
     LEECH_ENABLED = LEECH_ENABLED.lower() == "true"
 except:
     LEECH_ENABLED = False
+
 try:
     WATCH_ENABLED = getConfig("WATCH_ENABLED")
     WATCH_ENABLED = WATCH_ENABLED.lower() == "true"
@@ -563,6 +532,25 @@ try:
 except:
     CLONE_ENABLED = False
 try:
+    FSUB = getConfig("FSUB")
+    if FSUB.lower() == "true":
+        FSUB = "true"
+except KeyError:
+    FSUB = False
+    LOGGER.info("Force Subscribe is disabled")
+try:
+    CHANNEL_USERNAME = getConfig("CHANNEL_USERNAME")
+    if len(CHANNEL_USERNAME) == 0:
+        raise KeyError
+except KeyError:
+    log_warning("CHANNEL_USERNAME not provided! Using default @DevilMirrors")
+    CHANNEL_USERNAME = "@dipeshmirror"
+try:
+    FSUB_CHANNEL_ID = int(getConfig("FSUB_CHANNEL_ID"))
+except KeyError:
+    log_warning("CHANNEL_USERNAME not provided! Using default id of @DevilMirrors")
+    FSUB_CHANNEL_ID = "-1001577416484"
+try:
     ANILIST_ENABLED = getConfig("ANILIST_ENABLED")
     ANILIST_ENABLED = ANILIST_ENABLED.lower() == "true"
 except:
@@ -572,11 +560,6 @@ try:
     WAYBACK_ENABLED = WAYBACK_ENABLED.lower() == "true"
 except:
     WAYBACK_ENABLED = False
-try:
-    IMAGE_LEECH = getConfig("IMAGE_LEECH")
-    IMAGE_LEECH = IMAGE_LEECH.lower() == "true"
-except KeyError:
-    IMAGE_LEECH = False
 try:
     MEDIAINFO_ENABLED = getConfig("MEDIAINFO_ENABLED")
     MEDIAINFO_ENABLED = MEDIAINFO_ENABLED.lower() == "true"
@@ -595,13 +578,47 @@ try:
 except:
     CRYPT = None
 try:
-    APPDRIVE_EMAIL = getConfig('APPDRIVE_EMAIL')
-    APPDRIVE_PASS = getConfig('APPDRIVE_PASS')
-    if len(APPDRIVE_EMAIL) == 0 or len(APPDRIVE_PASS) == 0:
+    UNIFIED_EMAIL = getConfig('UNIFIED_EMAIL')
+    if len(UNIFIED_EMAIL) == 0:
         raise KeyError
-except KeyError:
-    APPDRIVE_EMAIL = None
-    APPDRIVE_PASS = None
+except:
+    UNIFIED_EMAIL = None
+try:
+    UNIFIED_PASS = getConfig('UNIFIED_PASS')
+    if len(UNIFIED_PASS) == 0:
+        raise KeyError
+except:
+    UNIFIED_PASS = None
+try:
+    HUBDRIVE_CRYPT = getConfig('HUBDRIVE_CRYPT')
+    if len(HUBDRIVE_CRYPT) == 0:
+        raise KeyError
+except:
+    HUBDRIVE_CRYPT = None
+try:
+    KATDRIVE_CRYPT = getConfig('KATDRIVE_CRYPT')
+    if len(KATDRIVE_CRYPT) == 0:
+        raise KeyError
+except:
+    KATDRIVE_CRYPT = None
+try:
+    DRIVEFIRE_CRYPT = getConfig('DRIVEFIRE_CRYPT')
+    if len(DRIVEFIRE_CRYPT) == 0:
+        raise KeyError
+except:
+    DRIVEFIRE_CRYPT = None
+try:
+    XSRF_TOKEN = getConfig('XSRF_TOKEN')
+    if len(XSRF_TOKEN) == 0:
+        raise KeyError
+except:
+    XSRF_TOKEN = None
+try:
+    laravel_session = getConfig('laravel_session')
+    if len(laravel_session) == 0:
+        raise KeyError
+except:
+    laravel_session = None
 try:
     SOURCE_LINK = getConfig('SOURCE_LINK')
     SOURCE_LINK = SOURCE_LINK.lower() == 'true'
@@ -612,6 +629,12 @@ try:
     BOT_PM = BOT_PM.lower() == 'true'	
 except KeyError:	
     BOT_PM = False
+try:
+    LOG_CHAT_URL = getConfig('LOG_CHAT_URL')
+    if len(LOG_CHAT_URL) == 0:
+        raise KeyError
+except:
+    LOG_CHAT_URL = None
 try:
     AUTHOR_NAME = getConfig('AUTHOR_NAME')
     if len(AUTHOR_NAME) == 0:
@@ -635,7 +658,7 @@ try:
     if len(TITLE_NAME) == 0:
         TITLE_NAME = 'Reflection-Mirror-Search'
 except KeyError:
-    TITLE_NAME = 'Reflection-Mirror-Search'
+    TITLE_NAME = 'WeebZone-Mirror-Search'
 try:
     FINISHED_PROGRESS_STR = getConfig('FINISHED_PROGRESS_STR') 
     UN_FINISHED_PROGRESS_STR = getConfig('UN_FINISHED_PROGRESS_STR')
